@@ -1,0 +1,129 @@
+---
+title: "Bird Bones and Living Habits"
+author: "JY"
+output: html_document
+---
+
+
+```{r}
+library(knitr)
+library(ggplot2)
+library(reshape2)
+library(gridExtra)
+```
+
+
+```{r, include=FALSE}
+setwd('C:/Users/JY/Documents/GitHub/Kaggle/BirdBones')
+```
+
+##1. Data Exploration
+The dataset contains ecological classification of birds and the measure (length and diameter) of five pieces of bones on the wings and legs. Let's first check the size and content of the data.
+```{r}
+# load the data
+bird.data <- read.csv("bird.csv")
+# check the dimension
+n.row <- nrow(bird.data)
+n.col <- ncol(bird.data)
+print (paste0("# of predictors: ", n.col))
+print (paste0("# of observations: ", n.row))
+# show how the data look like
+kable(bird.data[1:5, ])
+```
+
+There are 7 observations with missing values among the total 420 observations. Due to the samll proportion of missing values, We can just remove those 7 data points from our analysis. 
+```{r}
+# remove samples with missing values (7 in 420)
+data.complete <- bird.data[rowSums(is.na(bird.data)) == 0, ]
+```
+
+
+###1.1. Check the balance between classes
+
+For classification problems, it is important to check the proportion of each class. Severe imbalance of the classes can cause difficulties for correctly classifying the classes with smaller numbers of observations. 
+```{r, cache=TRUE, fig.width=6, fig.height=6}
+# compute count for each class
+data.count <- melt(table(data.complete[, n.col]))
+# class label
+label <- c("Scansorial", "Raptors", "Singing", "Swimming", "Terrestrial", "Wading")
+# commpute percentage
+percent <- rev(data.count$value/sum(data.count$value))
+# compute label position
+position <- cumsum(rev(data.count$value)) - 0.5*rev(data.count$value)
+
+# check the number of birds in each class
+ggplot(data=data.count, aes(x=factor(1), y=value, fill = Var1)) +
+  geom_bar(width = 1, stat = "identity")+
+  coord_polar(theta = "y") +
+  geom_text(aes(label = sprintf("%1.2f%%", 100*percent), y = position)) +
+  scale_fill_brewer(palette = "Set2", name = c("Living Habit"),
+                    label = label) +
+  ggtitle("Figure 1. Proportion of Birds with Different Living Habits") +
+  theme(plot.title = element_text(hjust = 0.5, size = 14))
+```
+
+###1.2. Check how each bone measure is related to the ecological classes
+We can roughly plot the trend of each bone measure in the different classes, in order to check whether different classes are related to different lenght and diameter of the bones. 
+```{r}
+# function to plot a measure by class
+bone.plot <- function(data, var){
+  p <- ggplot(data, mapping = aes_string(x = "type", y = var)) +
+        geom_boxplot() +
+        ggtitle(var) +
+        scale_x_discrete(labels=c("Scansorial", "Raptors", "Singing", 
+                                  "Swimming", "Terrestrial", "Wading")) +
+        ggtitle(var)+
+        theme(plot.title = element_text(size = 14))
+  return (p)
+}
+```
+```{r, cache=TRUE, fig.width=8, fig.height=12}
+# plot for each bone measure
+plots <- list()
+for (i in 1:(n.col - 2)){
+  name <- names(data.complete)[i+1]
+  plots[[i]] <- bone.plot(data.complete, name)
+}
+do.call(grid.arrange, c(plots, ncol=2))
+```
+
+###1.3. Check Correlation Between Predictors
+As the sizes of bones in the same bird are natually correlated with each other to certain extent due to the overall size of the bird, it is highly likely that the bone measures are correlated. However, correlation between predictors lead to multicollinearity problem for models. Let's first confirm whether there is strong correlation between the predictors. 
+```{r, cache=TRUE}
+#correlation between predictors
+cor.matrix <- cor(data.complete[, 2:(n.col-1)])
+# plot heatmap
+melted_cormat <- melt(cor.matrix)
+```
+```{r, fig.width=6, fig.height=5, cache = TRUE}
+ggplot(data = melted_cormat, aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile()+
+  scale_fill_continuous(low = "azure", high = "steelblue", 
+                        name = "Correlation") +
+  ggtitle("Figure 3. Correlation Between the Bone Measures") +
+  theme(plot.title = element_text(hjust = 0.5, size = 14))
+```
+
+The above heatmap clearly demonstrates the strong correlation between the bone measures. Some of the bones also seem to correlate together more than others, such as humerus and ulna (both are on the wings).
+
+In order to avoid the multicollinearity problem, we can use principal component analysis to decompose the predictors into orthogonal variables.  
+
+
+##2. Principal Component Analysis (PCA)
+```{r}
+# perform PCA
+pca <- prcomp(data.complete[2:(n.col-1)], scale=T)
+# check the variance explained by PCs
+
+```
+
+plot it, and cluster
+
+check weight of each bone on the top PCs
+
+
+##3. Classification by Support Vector Machines
+
+
+
+
