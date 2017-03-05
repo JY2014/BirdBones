@@ -10,6 +10,8 @@ library(knitr)
 library(ggplot2)
 library(reshape2)
 library(gridExtra)
+library(grid)
+library(scatterplot3d)
 ```
 
 
@@ -87,7 +89,9 @@ for (i in 1:(n.col - 2)){
 do.call(grid.arrange, c(plots, ncol=2))
 ```
 
-###1.3. Check Correlation Between Predictors
+It is interesting to notice that the difference among classes is very similar across different bone measures. Scansorial, singing and terrestrial birds tend to have lower bone lengths and diameters with smaller variance. The other three classes have higher measure values and large variance. The result is consistent with high correlation between bone measures (shown in 1.3). The visual difference between classes on the plots suggests potential classification using the information of the bones.  
+
+###1.3. Correlation Between Predictors
 As the sizes of bones in the same bird are natually correlated with each other to certain extent due to the overall size of the bird, it is highly likely that the bone measures are correlated. However, correlation between predictors lead to multicollinearity problem for models. Let's first confirm whether there is strong correlation between the predictors. 
 ```{r, cache=TRUE}
 #correlation between predictors
@@ -95,7 +99,7 @@ cor.matrix <- cor(data.complete[, 2:(n.col-1)])
 # plot heatmap
 melted_cormat <- melt(cor.matrix)
 ```
-```{r, fig.width=6, fig.height=5, cache = TRUE}
+```{r, fig.width=5, fig.height=4, cache = TRUE}
 ggplot(data = melted_cormat, aes(x=Var1, y=Var2, fill=value)) + 
   geom_tile()+
   scale_fill_continuous(low = "azure", high = "steelblue", 
@@ -113,17 +117,110 @@ In order to avoid the multicollinearity problem, we can use principal component 
 ```{r}
 # perform PCA
 pca <- prcomp(data.complete[2:(n.col-1)], scale=T)
-# check the variance explained by PCs
+```
+
+###2.1. Variance Explained by Each Principal Component
+```{r, cache=TRUE, fig.width=5, fig.height=4}
+# check the variance explained by each PC
+# total variance of the data
+total.var <- sum(pca$sdev^2)
+# compute %variance explained by each PC
+percent.var <- pca$sdev^2/total.var
+# cumulative variance explained
+cum.percent <- c()
+for (i in 1:(n.col-2)){
+  cum.percent <- c(cum.percent, sum(percent.var[1:i]))
+}
+# plot the accumulative variance against # of PCs
+df <- data.frame(percent = cum.percent, 
+                 num.PC = seq(1, n.col-2, 1))
+ggplot(df, aes(x = num.PC, y = percent))+
+  geom_point()+
+  geom_line()+
+  ggtitle("Figure 4. Cumulative Variance Explained by Principal Components")+
+  theme(plot.title = element_text(hjust = 0.5, size = 11))+
+  xlab("Number of Principal Components")+
+  ylab("Percentage of Variance Explained")
+```
+
+Consistent with high correlation among bone measures, the first principal component explains 85% of the variance. The first three principal components explain over 95% of the variance. 
+
+###2.2. How the Principal Components Represent the Bone Measures
+```{r, fig.width=8, fig.height=6, cache=TRUE}
+score <- data.frame(pca$rotation)
+score$names <- rownames(score)
+score.df <- melt(score, value.name = "score")
+
+ggplot(score.df, aes(x = names, y = score))+
+  geom_bar(stat = "identity")+
+  coord_flip()+
+  facet_wrap(~ variable)+
+  ggtitle("Figure 5. Bone Measures Represented by Each Principal Component")+
+  theme(plot.title = element_text(hjust = 0.5, size = 14))+
+  ylab("Bone measures")
+```
+
+The first principal component captures the common trend among the bone measures. The later principal components start to pick up smaller difference among the measures. 
+
+###2.3. Visualize the Ecological Classes on the First Two PCs
+```{r, cache=TRUE, fig.width=12, fig.height=5}
+# combine the PCs with class label into a df
+pca.df <- data.frame(pca$x)
+pca.df$type <- data.complete$type
+# plot and color by sample type
+p1<- ggplot(pca.df, aes(x = PC1, y = PC2, color = type)) +
+  geom_point() +
+  scale_color_discrete(name = "Ecological Class", labels = label)+
+  ggtitle("6a. Ecological Classes Shown by PC1 and PC2")+
+  theme(plot.title = element_text(size = 11)) 
+p2<- ggplot(pca.df, aes(x = PC3, y = PC4, color = type)) +
+  geom_point() +
+  scale_color_discrete(name = "Ecological Class", labels = label)+
+  ggtitle("6b. Ecological Classes Shown by PC3 and PC4")+
+  theme(plot.title = element_text(size = 11))
+grid.arrange(p1, p2, ncol=2, 
+  top = textGrob("Figure 6. Ecological Classes Shown by Principal Components", 
+                gp=gpar(fontsize=14, fontface = 'bold')))
+```
+
+We can see from the above plots that the ecologial classes are hard to be separated by the principal components. Consistent with the previous boxplots of the bone measures, three types of birds (raptors, swimming and wading) have higher variance compared to the other three types. It makes sense for the birds to share similar bone characteristics even if they have very different living habits, especially when some of the living habits may co-exist in a brid.  For example, the singing birds may share the bone measures of scansorial birds if they also climb trees.
+
+**Since it is hard to set distinct living habits for some of the groups, it is also hard to classify the birds according to the living habits. Instead, we can use some of the living habits that do not co-exist in birds to perform the classification.** For example, the water birds and non-water birds can be a distinct and clear classification. In order to perform the following classification, the ecological classes are further grouped as follows:
+
+* **Water birds**: including swimming and wading birds
+* **Others**: other classes
+
+The water birds are characterized by the higher bone measure variance compared to other birds. The two groups are largely separable on the following plot.
+
+```{r}
+# assign new types to the data
+pca.df$new.type <- "Other"
+pca.df$new.type[pca.df$type == "SW" | pca.df$type == "W"] <- "Water"
+pca.df$new.type <- as.factor(pca.df$new.type)
+```
+
+```{r, cache=TRUE, fig.width=5, fig.height=5}
+# 3-D plot to visualize the two groups
+colors = c("red", "blue")
+colors <- colors[as.numeric(pca.df$new.type)]
+
+plot <- scatterplot3d(pca.df[c(2:4)], 
+            color = colors, angle = 60, pch = 1,
+            main = "Figure 7. Water v.s Other Birds by the PC 2-4")
+
+legend(plot$xyz.convert(-4, 2, 2), legend = levels(pca.df$new.type),
+      col = c("red", "blue"), pch =1)
 
 ```
 
-plot it, and cluster
-
-check weight of each bone on the top PCs
-
+Although there is still overlap between the two groups, we can try classification models on the data based on these two ecological distinct groups. 
 
 ##3. Classification by Support Vector Machines
+Let's first check the balance between these two groups:
 
+###3.1. Baseline by Random Forest
+
+###3.2. Support Vector Machines
 
 
 
