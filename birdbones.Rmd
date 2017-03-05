@@ -1,17 +1,49 @@
 ---
 title: "Bird Bones and Living Habits"
-author: "JY"
+author: "-JY"
 output: html_document
 ---
+This data analysis project uses a [dataset](https://www.kaggle.com/zhangjuefei/birds-bones-and-living-habits) that contains bone measures and living habits of birds provided by Dr. D. Liu of Beijing Museum of Natural History. The data contains ecological categories of the birds and measures of length and diameter of five bones from the bird's skeleton. The analysis explores the data and builds models to classify the bird's ecological classes based on its bone information. 
+
+####Data
+The data is downloaded from the [Kaggle website](https://www.kaggle.com/zhangjuefei/birds-bones-and-living-habits). The dataset contains ecological classification of birds and the measure (length and diameter) of five pieces of bones on the wings and legs. The ecological classes include:
+
+- Swimming Birds (S)
+- Wading Birds (W)
+- Terrestrial Birds (T)
+- Raptors (R)
+- Scansorial Birds (P)
+- Singing Birds (SO)
+
+The bones measured are indicated on the following graph:
+
+![](https://cloud.githubusercontent.com/assets/9686980/23591963/51c05708-01c7-11e7-9dd6-9e31c5734d20.jpg)
 
 
-```{r}
+##Outline
+* 1. Data Exploration
+    - 1.1. Check the balance between classes
+    - 1.2. Check how each bone measure is related to the ecological classes
+    - 1.3. Correlation between predictors
+* 2. Principal Component Analysis (PCA) 
+    - 2.1. Variance explained by each principal component
+    - 2.2. How the principal components represent the bone measures
+    - 2.3. Visualize the ecological classes
+* 3. Classification
+    - 3.1. Water vs Non-water birds
+    - 3.2. Multi-class classification
+* 4. Summary
+
+```{r, message = FALSE}
 library(knitr)
 library(ggplot2)
 library(reshape2)
 library(gridExtra)
 library(grid)
 library(scatterplot3d)
+library(e1071)
+library(caret)
+library(randomForest)
 ```
 
 
@@ -20,7 +52,7 @@ setwd('C:/Users/JY/Documents/GitHub/Kaggle/BirdBones')
 ```
 
 ##1. Data Exploration
-The dataset contains ecological classification of birds and the measure (length and diameter) of five pieces of bones on the wings and legs. Let's first check the size and content of the data.
+Let's first check the size and content of the data.
 ```{r}
 # load the data
 bird.data <- read.csv("bird.csv")
@@ -42,7 +74,7 @@ data.complete <- bird.data[rowSums(is.na(bird.data)) == 0, ]
 
 ###1.1. Check the balance between classes
 
-For classification problems, it is important to check the proportion of each class. Severe imbalance of the classes can cause difficulties for correctly classifying the classes with smaller numbers of observations. 
+For classification problems, it is important to check the proportion of each class. Severe imbalance of the classes can cause difficulties of correctly classifying the classes with fewer observations. 
 ```{r, cache=TRUE, fig.width=6, fig.height=6}
 # compute count for each class
 data.count <- melt(table(data.complete[, n.col]))
@@ -64,8 +96,10 @@ ggplot(data=data.count, aes(x=factor(1), y=value, fill = Var1)) +
   theme(plot.title = element_text(hjust = 0.5, size = 14))
 ```
 
+More than half of the birds are classified as singing or swimming birds. Terrestrial birds are in the smallest group. 
+
 ###1.2. Check how each bone measure is related to the ecological classes
-We can roughly plot the trend of each bone measure in the different classes, in order to check whether different classes are related to different lenght and diameter of the bones. 
+We can roughly plot the trend of each bone measure among the ecological classes, in order to check whether different classes are related to different lengths and diameters of the bones. 
 ```{r}
 # function to plot a measure by class
 bone.plot <- function(data, var){
@@ -89,10 +123,10 @@ for (i in 1:(n.col - 2)){
 do.call(grid.arrange, c(plots, ncol=2))
 ```
 
-It is interesting to notice that the difference among classes is very similar across different bone measures. Scansorial, singing and terrestrial birds tend to have lower bone lengths and diameters with smaller variance. The other three classes have higher measure values and large variance. The result is consistent with high correlation between bone measures (shown in 1.3). The visual difference between classes on the plots suggests potential classification using the information of the bones.  
+It is interesting to notice that the difference among classes is very similar across different bone measures. Scansorial, singing and terrestrial birds tend to have lower bone lengths and diameters with smaller variance. The other three classes have higher measure values and large variance. The result is consistent with high correlation between bone measures (shown in 1.3). The visual difference between classes suggests potential classification using the information of the bones.  
 
-###1.3. Correlation Between Predictors
-As the sizes of bones in the same bird are natually correlated with each other to certain extent due to the overall size of the bird, it is highly likely that the bone measures are correlated. However, correlation between predictors lead to multicollinearity problem for models. Let's first confirm whether there is strong correlation between the predictors. 
+###1.3. Correlation between predictors
+As the sizes of bones in the same bird are natually correlated with each other due to factors such as the overall size of the bird, the bone measures are highly likely to be correlated. However, correlation between predictors leads to multicollinearity problem for models. Let's first confirm whether there is strong correlation between the predictors. 
 ```{r, cache=TRUE}
 #correlation between predictors
 cor.matrix <- cor(data.complete[, 2:(n.col-1)])
@@ -108,7 +142,7 @@ ggplot(data = melted_cormat, aes(x=Var1, y=Var2, fill=value)) +
   theme(plot.title = element_text(hjust = 0.5, size = 14))
 ```
 
-The above heatmap clearly demonstrates the strong correlation between the bone measures. Some of the bones also seem to correlate together more than others, such as humerus and ulna (both are on the wings).
+The above heatmap clearly demonstrates strong correlation among the bone measures. Some of the bones also seem to correlate more than others, such as humerus and ulna (both are on the wings).
 
 In order to avoid the multicollinearity problem, we can use principal component analysis to decompose the predictors into orthogonal variables.  
 
@@ -119,8 +153,8 @@ In order to avoid the multicollinearity problem, we can use principal component 
 pca <- prcomp(data.complete[2:(n.col-1)], scale=T)
 ```
 
-###2.1. Variance Explained by Each Principal Component
-```{r, cache=TRUE, fig.width=5, fig.height=4}
+###2.1. Variance explained by each principal component (PC)
+```{r, cache=TRUE, fig.width=6, fig.height=4}
 # check the variance explained by each PC
 # total variance of the data
 total.var <- sum(pca$sdev^2)
@@ -138,15 +172,15 @@ ggplot(df, aes(x = num.PC, y = percent))+
   geom_point()+
   geom_line()+
   ggtitle("Figure 4. Cumulative Variance Explained by Principal Components")+
-  theme(plot.title = element_text(hjust = 0.5, size = 11))+
+  theme(plot.title = element_text(hjust = 0.5, size = 13))+
   xlab("Number of Principal Components")+
   ylab("Percentage of Variance Explained")
 ```
 
 Consistent with high correlation among bone measures, the first principal component explains 85% of the variance. The first three principal components explain over 95% of the variance. 
 
-###2.2. How the Principal Components Represent the Bone Measures
-```{r, fig.width=8, fig.height=6, cache=TRUE}
+###2.2. How the principal components represent the bone measures
+```{r, fig.width=8, fig.height=6, cache=TRUE, message = FALSE}
 score <- data.frame(pca$rotation)
 score$names <- rownames(score)
 score.df <- melt(score, value.name = "score")
@@ -160,9 +194,9 @@ ggplot(score.df, aes(x = names, y = score))+
   ylab("Bone measures")
 ```
 
-The first principal component captures the common trend among the bone measures. The later principal components start to pick up smaller difference among the measures. 
+The first principal component captures the common trend of the bone measures. The later principal components start to pick up smaller difference among the measures. 
 
-###2.3. Visualize the Ecological Classes on the First Two PCs
+###2.3. Visualize the ecological classes
 ```{r, cache=TRUE, fig.width=12, fig.height=5}
 # combine the PCs with class label into a df
 pca.df <- data.frame(pca$x)
@@ -172,20 +206,20 @@ p1<- ggplot(pca.df, aes(x = PC1, y = PC2, color = type)) +
   geom_point() +
   scale_color_discrete(name = "Ecological Class", labels = label)+
   ggtitle("6a. Ecological Classes Shown by PC1 and PC2")+
-  theme(plot.title = element_text(size = 11)) 
+  theme(plot.title = element_text(size = 13)) 
 p2<- ggplot(pca.df, aes(x = PC3, y = PC4, color = type)) +
   geom_point() +
   scale_color_discrete(name = "Ecological Class", labels = label)+
   ggtitle("6b. Ecological Classes Shown by PC3 and PC4")+
-  theme(plot.title = element_text(size = 11))
+  theme(plot.title = element_text(size = 13))
 grid.arrange(p1, p2, ncol=2, 
   top = textGrob("Figure 6. Ecological Classes Shown by Principal Components", 
-                gp=gpar(fontsize=14, fontface = 'bold')))
+                gp=gpar(fontsize=16, fontface = 'bold')))
 ```
 
 We can see from the above plots that the ecologial classes are hard to be separated by the principal components. Consistent with the previous boxplots of the bone measures, three types of birds (raptors, swimming and wading) have higher variance compared to the other three types. It makes sense for the birds to share similar bone characteristics even if they have very different living habits, especially when some of the living habits may co-exist in a brid.  For example, the singing birds may share the bone measures of scansorial birds if they also climb trees.
 
-**Since it is hard to set distinct living habits for some of the groups, it is also hard to classify the birds according to the living habits. Instead, we can use some of the living habits that do not co-exist in birds to perform the classification.** For example, the water birds and non-water birds can be a distinct and clear classification. In order to perform the following classification, the ecological classes are further grouped as follows:
+Based on the above plots, it may be difficult to classify the all six living habits according to the bone measures. We will try it in Section 3.2. **In addition, we can also use some of the living habits that do not co-exist in birds to perform the classification.** For example, the water birds and non-water birds can be a distinct and clear classification. In order to perform the classification, the ecological classes are further grouped as follows:
 
 * **Water birds**: including swimming and wading birds
 * **Others**: other classes
@@ -204,23 +238,252 @@ pca.df$new.type <- as.factor(pca.df$new.type)
 colors = c("red", "blue")
 colors <- colors[as.numeric(pca.df$new.type)]
 
-plot <- scatterplot3d(pca.df[c(2:4)], 
+plot <- scatterplot3d(pca.df[c(1, 3:4)], 
             color = colors, angle = 60, pch = 1,
             main = "Figure 7. Water v.s Other Birds by the PC 2-4")
 
-legend(plot$xyz.convert(-4, 2, 2), legend = levels(pca.df$new.type),
+legend(plot$xyz.convert(-15, 3, 2), legend = levels(pca.df$new.type),
       col = c("red", "blue"), pch =1)
-
 ```
 
 Although there is still overlap between the two groups, we can try classification models on the data based on these two ecological distinct groups. 
 
-##3. Classification by Support Vector Machines
+##3. Classification
+####Both the binary classification of water vs non-water birds (as described above) and the multi-class classification tasks are performed.
+
+###3.1. Water v.s. Non-water birds
 Let's first check the balance between these two groups:
+```{r}
+table(pca.df$new.type)
+```
 
-###3.1. Baseline by Random Forest
-
-###3.2. Support Vector Machines
+The numbers of birds in the two classes are comparable. We can directly apply classification models to the data without necessarily adjusting the class weight. 
 
 
+```{r}
+# number of samples
+n.sample <- nrow(pca.df)
+# separate training and testing sets
+index <- sample(seq(1, n.sample, 1), n.sample)
+# use 30% as testing set
+n.split <- floor(n.sample*0.7)
+train <- pca.df[index[1:n.split], ]
+test <- pca.df[index[(n.split+1):n.sample], ]
+```
 
+Let's try logistic regression and support vector machines (SVM) for this classification task. Both models are known to achieve good classification performance, but with advantages in different cases.
+
+###3.1.1. Logistic Regression
+
+####Variable selection by deviance
+In order to decide which principal components to include into the logistic regression model, a predictor selection procedure is performed. First, models with one PC as the predictor are compared to the intercept model, and the predictor with the lowest deviance (most significant p-value from likelihood ratio test) is added to the model. Then a second predictor is selected in the same way. The procedure is repeated until no predictor yields any statistical significant improvement of the model. 
+
+Sample code for the first step:
+```{r}
+# function to store model results
+store <- function(model, variable, null.deviance, null.df){
+  # compute p-value from Chi-square distribution
+  p.val <- 1- pchisq(null.deviance - deviance(model), 
+                     length(model$coefficients) - null.df)
+  # organize the result into a dataframe
+  result <- data.frame(model = variable, 
+                       deviance = deviance(model), 
+                       num.coef = length(model$coefficients),
+                       p.value = p.val)
+  return (result)
+}
+
+# fit an intercept model
+model.0 <- glm(new.type ~ 1, data = pca.df, family = binomial)
+result <- store(model.0, "1", deviance(model.0), 1)
+# compare to model with 1 predictor
+variables <- names(pca.df)[1:10]
+for (name in variables){
+  formula = as.formula(paste0("new.type ~", name))
+  model <- glm(formula, data = pca.df, family = binomial)
+  result <- rbind(result, store(model, paste0("1+", name), deviance(model.0), 1))
+}
+# check the comparison
+kable(result)
+```
+
+PC4 is added into the model. 
+
+The rest of the procedure is not presented (check the rmarkdown file for details). Here is the final model and all the previsou steps of the model selection. 
+
+```{r, include = FALSE}
+result <- result[c(1, 5), ]
+variables <- variables[variables != "PC4"]
+# compare to model with 1 more predictor
+for (name in variables){
+  formula = as.formula(paste0("new.type ~ PC4+", name))
+  model <- glm(formula, data = pca.df, family = binomial)
+  result <- rbind(result, store(model, paste0("1+PC4+", name), 
+                                result$deviance[2], 1))
+}
+# check the comparison
+kable(result)
+```
+
+```{r, include = FALSE}
+result <- result[c(1:3), ]
+variables <- variables[variables != "PC1"]
+# compare to model with 1 more predictor
+for (name in variables){
+  formula = as.formula(paste0("new.type ~ PC4+PC1+", name))
+  model <- glm(formula, data = pca.df, family = binomial)
+  result <- rbind(result, store(model, paste0("1+PC4+PC1+", name), 
+                                result$deviance[3], 1))
+}
+# check the comparison
+kable(result)
+```
+
+```{r, include = FALSE}
+result <- result[c(1:3, 5), ]
+variables <- variables[variables != "PC3"]
+# compare to model with 1 more predictor
+for (name in variables){
+  formula = as.formula(paste0("new.type ~ PC4+PC1+PC3+", name))
+  model <- glm(formula, data = pca.df, family = binomial)
+  result <- rbind(result, store(model, paste0("1+PC4+PC1+PC3+", name), 
+                                result$deviance[4], 1))
+}
+# check the comparison
+kable(result)
+```
+
+```{r, include = FALSE}
+result <- result[c(1:4, 11), ]
+variables <- variables[variables != "PC10"]
+# compare to model with 1 more predictor
+for (name in variables){
+  formula = as.formula(paste0("new.type ~ PC4+PC1+PC3+PC10+", name))
+  model <- glm(formula, data = pca.df, family = binomial)
+  result <- rbind(result, store(model, paste0("1+PC4+PC1+PC3+PC10+", name), 
+                                result$deviance[5], 1))
+}
+# check the comparison
+kable(result)
+```
+
+```{r, include = FALSE}
+result <- result[c(1:5, 10), ]
+variables <- variables[variables != "PC8"]
+# compare to model with 1 more predictor
+for (name in variables){
+  formula = as.formula(paste0("new.type ~ PC4+PC1+PC3+PC10+PC8+", name))
+  model <- glm(formula, data = pca.df, family = binomial)
+  result <- rbind(result, store(model, paste0("1+PC4+PC1+PC3+PC10+PC8+", name), 
+                                result$deviance[6], 1))
+}
+# check the comparison
+kable(result)
+```
+
+```{r, echo = FALSE}
+result <- result[c(1:6), ]
+kable(result)
+```
+
+The final model includes the principal component #1, 3, 4, 8 and 10. 
+
+```{r, warning = FALSE}
+# check performance of the final model 
+model.log <- glm(new.type ~ PC1+PC3+PC4+PC8+PC10, data = train,
+                 family = binomial)
+# predict on test set
+pred <- predict(model.log, newdata = test)
+# convert to binary result
+y.pred <- rep("Other", nrow(test))
+y.pred[pred > 0.5] <- "Water"
+# classification accuracy
+print (paste0("Classification accuracy of the logistic model is ", 
+              round(mean(y.pred == test$new.type), 4)))
+# check confusion matrix
+table <- confusionMatrix(y.pred, test$new.type)
+table$table
+```
+
+The logsitic model has a high classificatio accuracy of over 90%. Depending on the need, we can further adjust the class weight to achieve better classification on centain groups. 
+
+Then let's check if support vector machines can result in similar classification accuracy using the same set of predictors. 
+
+
+###3.1.2. Support Vector Machines (SVM)
+
+**Linear Kernel**
+```{r, cache=TRUE}
+# perform SVM with linear kernel 
+# (the best cost is around the default 1)
+svm.linear <- svm(new.type ~ PC1+PC3+PC4+PC8+PC10, 
+                   data = train, kernel = "linear") 
+# predict on test set
+pred <- predict(svm.linear, newdata = test)
+# classification accuracy
+print (paste0("Classification accuracy of linear SVM is ",
+              round(mean(pred == test$new.type), 4)))
+```
+
+The performance of linear SVM is already comparable to logistic regression. It suggest that the decision boundary is actually linear in this case. However, let's try a radial kernel to see if the accuracy can be even better.
+
+**Radial Basis Kernel**
+```{r, cache=TRUE, fig.width=6, fig.height=6}
+set.seed(322)
+# perform SVM with RBF kernel using default 10-fold CV
+svm.rbf <- tune(svm, new.type ~ PC1+PC3+PC4+PC8+PC10, 
+                data = train, kernel = "radial", 
+                ranges = list(gamma = seq(0.01, 0.2, 0.02),
+                              cost = seq(20, 240, 20)))
+svm.rbf$best.parameters
+plot(svm.rbf, main = "Figure 8. Visualize the Grid Search Result")
+# predict on test set
+pred <- predict(svm.rbf$best.model, newdata = test)
+# classification accuracy
+print (paste0("Classification accuracy of the radial SVM is ",
+              round(mean(pred == test$new.type), 4)))
+```
+
+With tuned Radial SVM, the classification accuracy is further improved to over 95%. 
+
+###3.2. Multi-class classification
+After the success in the classification of water vs non-water birds, let's also try the original classification tasks of the six ecological classes using SVM. Although the groups are not visually separable from the above plots, the performance of SVM is surprisingly good. 
+
+**Linear Kernel**:
+```{r, cache=TRUE}
+# linear SVM on the multi-class task
+log.2 <- tune(svm, type ~ ., data = train, kernel = "linear",
+              ranges = list(cost = 10^seq(-3, 3, 1)))
+# predict on test set
+pred <- predict(log.2$best.model, newdata = test)
+# classification accuracy
+print (paste0("Multi-class classification accuracy of the Linear SVM is ",
+              round(mean(pred == test$type), 4)))
+# confusion matrix
+table.2 <- confusionMatrix(pred, test$type)
+table.2$table
+```
+
+The classification accuracy is surprisingly high, and the classification of most classes are good. Interestinly, as mentioned above that swimming birds (SW) and walding birds (W) are similar, they tend to be misclassified to each other in this multi-class classification task.  
+
+**RBF Kernel**:
+```{r, cache=TRUE}
+# RBF SVM on the multi-class task
+rbf.2 <- tune(svm, type ~ ., data = train, kernel = "radial",
+              ranges = list(cost = seq(1, 40, 4),
+                            gamma = c(seq(0.001, 0.009, 0.002), 
+                                      seq(0.01, 1, 0.02))))
+# predict on test set
+pred <- predict(rbf.2$best.model, newdata = test)
+# classification accuracy
+print (paste0("Multi-class classification accuracy of the RBF SVM is ",
+              round(mean(pred == test$type), 4)))
+# confusion matrix
+table.3 <- confusionMatrix(pred, test$type)
+table.3$table
+```
+
+The RBF kernel improves the classification accuracy to over 90%. The improvement is mainly on better separation of the swimming and walding birds, with some improvement on other classes except terretorial birds (which only has a few samples in the test set.)
+
+##4. Summary
+Models are able to classify birds into the correct ecological classes according to their bone measures. The classification with high accuracy indicates that the bird's living habits are related to its bone structure. It makes sense because a bird's living habits are the results of the natual selection and evolution of the bird's body structures. The different bone structures enable the birds to adapt to the different living habits. Besides performaing classification using the bone measures, details of the bone structures may also help the studies of how birds adapt to the different living habits. 
