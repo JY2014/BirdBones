@@ -12,4 +12,4 @@ The data is downloaded from the [Kaggle website](https://www.kaggle.com/zhangjue
 The dataset is in ***bird.csv***
 
 ###Analysis
-The analysis is perform by **R** in the rmarkdown file ***birdbones.Rmd***
+The analysis is performed by **R** in the rmarkdown file ***birdbones.Rmd***
