@@ -248,6 +248,29 @@ legend(plot$xyz.convert(-15, 3, 2), legend = levels(pca.df$new.type),
 Although there is still overlap between the two groups, we can try classification models on the data based on these two ecological distinct groups. 
 
 ##3. Classification
+
+First, let's split training and testing sets, and apply PCA transformation.
+```{r}
+# add the new type to original data
+data.complete$new.type <- pca.df$new.type
+# number of samples
+n.sample <- nrow(data.complete)
+# separate training and testing sets
+set.seed(322)
+index <- sample(seq(1, n.sample, 1), n.sample)
+# use 30% as testing set
+n.split <- floor(n.sample*0.7)
+train.split <- data.complete[index[1:n.split], ]
+test.split <- data.complete[index[(n.split+1):n.sample], ]
+# apply PCA to the training data
+pca.2 <- prcomp(train.split[,2:(n.col-1)], scale = TRUE)
+train <- data.frame(pca.2$x)
+train[c("type", "new.type")] <- train.split[c("type", "new.type")]
+# project the test data to the same PCA scale
+test <- data.frame(predict(pca.2, newdata = test.split[, 2:(n.col-1)]))
+test[c("type", "new.type")] <- test.split[c("type", "new.type")]
+```
+
 ####Both the binary classification of water vs non-water birds (as described above) and the multi-class classification tasks are performed.
 
 ###3.1. Water v.s. Non-water birds
@@ -257,18 +280,6 @@ table(pca.df$new.type)
 ```
 
 The numbers of birds in the two classes are comparable. We can directly apply classification models to the data without necessarily adjusting the class weight. 
-
-
-```{r}
-# number of samples
-n.sample <- nrow(pca.df)
-# separate training and testing sets
-index <- sample(seq(1, n.sample, 1), n.sample)
-# use 30% as testing set
-n.split <- floor(n.sample*0.7)
-train <- pca.df[index[1:n.split], ]
-test <- pca.df[index[(n.split+1):n.sample], ]
-```
 
 Let's try logistic regression and support vector machines (SVM) for this classification task. Both models are known to achieve good classification performance, but with advantages in different cases.
 
@@ -293,31 +304,31 @@ store <- function(model, variable, null.deviance, null.df){
 }
 
 # fit an intercept model
-model.0 <- glm(new.type ~ 1, data = pca.df, family = binomial)
+model.0 <- glm(new.type ~ 1, data = train, family = binomial)
 result <- store(model.0, "1", deviance(model.0), 1)
 # compare to model with 1 predictor
 variables <- names(pca.df)[1:10]
 for (name in variables){
   formula = as.formula(paste0("new.type ~", name))
-  model <- glm(formula, data = pca.df, family = binomial)
+  model <- glm(formula, data = train, family = binomial)
   result <- rbind(result, store(model, paste0("1+", name), deviance(model.0), 1))
 }
 # check the comparison
 kable(result)
 ```
 
-PC4 is added into the model. 
+PC3 is added into the model. 
 
 The rest of the procedure is not presented (check the rmarkdown file for details). Here is the final model and all the previsou steps of the model selection. 
 
 ```{r, include = FALSE}
-result <- result[c(1, 5), ]
-variables <- variables[variables != "PC4"]
+result <- result[c(1, 4), ]
+variables <- variables[variables != "PC3"]
 # compare to model with 1 more predictor
 for (name in variables){
-  formula = as.formula(paste0("new.type ~ PC4+", name))
-  model <- glm(formula, data = pca.df, family = binomial)
-  result <- rbind(result, store(model, paste0("1+PC4+", name), 
+  formula = as.formula(paste0("new.type ~ PC3+", name))
+  model <- glm(formula, data = train, family = binomial)
+  result <- rbind(result, store(model, paste0("1+PC3+", name), 
                                 result$deviance[2], 1))
 }
 # check the comparison
@@ -329,9 +340,9 @@ result <- result[c(1:3), ]
 variables <- variables[variables != "PC1"]
 # compare to model with 1 more predictor
 for (name in variables){
-  formula = as.formula(paste0("new.type ~ PC4+PC1+", name))
-  model <- glm(formula, data = pca.df, family = binomial)
-  result <- rbind(result, store(model, paste0("1+PC4+PC1+", name), 
+  formula = as.formula(paste0("new.type ~ PC3+PC1+", name))
+  model <- glm(formula, data = train, family = binomial)
+  result <- rbind(result, store(model, paste0("1+PC3+PC1+", name), 
                                 result$deviance[3], 1))
 }
 # check the comparison
@@ -340,56 +351,28 @@ kable(result)
 
 ```{r, include = FALSE}
 result <- result[c(1:3, 5), ]
-variables <- variables[variables != "PC3"]
+variables <- variables[variables != "PC4"]
 # compare to model with 1 more predictor
 for (name in variables){
-  formula = as.formula(paste0("new.type ~ PC4+PC1+PC3+", name))
+  formula = as.formula(paste0("new.type ~ PC3+PC1+PC4+", name))
   model <- glm(formula, data = pca.df, family = binomial)
-  result <- rbind(result, store(model, paste0("1+PC4+PC1+PC3+", name), 
+  result <- rbind(result, store(model, paste0("1+PC3+PC1+PC4+", name), 
                                 result$deviance[4], 1))
 }
 # check the comparison
 kable(result)
 ```
 
-```{r, include = FALSE}
-result <- result[c(1:4, 11), ]
-variables <- variables[variables != "PC10"]
-# compare to model with 1 more predictor
-for (name in variables){
-  formula = as.formula(paste0("new.type ~ PC4+PC1+PC3+PC10+", name))
-  model <- glm(formula, data = pca.df, family = binomial)
-  result <- rbind(result, store(model, paste0("1+PC4+PC1+PC3+PC10+", name), 
-                                result$deviance[5], 1))
-}
-# check the comparison
-kable(result)
-```
-
-```{r, include = FALSE}
-result <- result[c(1:5, 10), ]
-variables <- variables[variables != "PC8"]
-# compare to model with 1 more predictor
-for (name in variables){
-  formula = as.formula(paste0("new.type ~ PC4+PC1+PC3+PC10+PC8+", name))
-  model <- glm(formula, data = pca.df, family = binomial)
-  result <- rbind(result, store(model, paste0("1+PC4+PC1+PC3+PC10+PC8+", name), 
-                                result$deviance[6], 1))
-}
-# check the comparison
-kable(result)
-```
-
 ```{r, echo = FALSE}
-result <- result[c(1:6), ]
+result <- result[c(1:4), ]
 kable(result)
 ```
 
-The final model includes the principal component #1, 3, 4, 8 and 10. 
+The final model includes the principal component #1, 3 and 4. 
 
 ```{r, warning = FALSE}
 # check performance of the final model 
-model.log <- glm(new.type ~ PC1+PC3+PC4+PC8+PC10, data = train,
+model.log <- glm(new.type ~ PC1+PC3+PC4, data = train,
                  family = binomial)
 # predict on test set
 pred <- predict(model.log, newdata = test)
@@ -415,7 +398,7 @@ Then let's check if support vector machines can result in similar classification
 ```{r, cache=TRUE}
 # perform SVM with linear kernel 
 # (the best cost is around the default 1)
-svm.linear <- svm(new.type ~ PC1+PC3+PC4+PC8+PC10, 
+svm.linear <- svm(new.type ~ PC1+PC3+PC4, 
                    data = train, kernel = "linear") 
 # predict on test set
 pred <- predict(svm.linear, newdata = test)
@@ -424,13 +407,13 @@ print (paste0("Classification accuracy of linear SVM is ",
               round(mean(pred == test$new.type), 4)))
 ```
 
-The performance of linear SVM is already comparable to logistic regression. It suggest that the decision boundary is actually linear in this case. However, let's try a radial kernel to see if the accuracy can be even better.
+The performance of linear SVM is comparable to the logistic regression. The high accuracy suggests that the decision boundary is linear in this case. However, let's try a radial kernel to see if the accuracy can be even better.
 
 **Radial Basis Kernel**
 ```{r, cache=TRUE, fig.width=6, fig.height=6}
 set.seed(322)
 # perform SVM with RBF kernel using default 10-fold CV
-svm.rbf <- tune(svm, new.type ~ PC1+PC3+PC4+PC8+PC10, 
+svm.rbf <- tune(svm, new.type ~ PC1+PC3+PC4, 
                 data = train, kernel = "radial", 
                 ranges = list(gamma = seq(0.01, 0.2, 0.02),
                               cost = seq(20, 240, 20)))
@@ -443,7 +426,7 @@ print (paste0("Classification accuracy of the radial SVM is ",
               round(mean(pred == test$new.type), 4)))
 ```
 
-With tuned Radial SVM, the classification accuracy is further improved to over 95%. 
+With tuned Radial SVM, the classification accuracy is further improved to over 93%. 
 
 ###3.2. Multi-class classification
 After the success in the classification of water vs non-water birds, let's also try the original classification tasks of the six ecological classes using SVM. Although the groups are not visually separable from the above plots, the performance of SVM is surprisingly good. 
