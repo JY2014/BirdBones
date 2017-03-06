@@ -15,3 +15,5 @@ The dataset is in ***bird.csv***
 
 ###Analysis
 The analysis is performed by **R** in the rmarkdown file ***birdbones.Rmd***
+
+Check [here] (https://jy2014.github.io/BirdBones_LivingHabit/birdbones.html) for both the analysis and discussion. 
