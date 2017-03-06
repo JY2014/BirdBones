@@ -426,7 +426,7 @@ print (paste0("Classification accuracy of the radial SVM is ",
               round(mean(pred == test$new.type), 4)))
 ```
 
-With tuned Radial SVM, the classification accuracy is further improved to over 93%. 
+With tuned Radial SVM, the classification accuracy is further improved to over 95%. 
 
 ###3.2. Multi-class classification
 After the success in the classification of water vs non-water birds, let's also try the original classification tasks of the six ecological classes using SVM. Although the groups are not visually separable from the above plots, the performance of SVM is surprisingly good. 
@@ -465,7 +465,7 @@ table.3 <- confusionMatrix(pred, test$type)
 table.3$table
 ```
 
-The RBF kernel improves the classification accuracy to over 90%. The improvement is mainly on better separation of the swimming and walding birds, with some improvement on other classes except terretorial birds (which only has a few samples in the test set.)
+The RBF kernel improves the classification accuracy to over 95%. The improvement is mainly on better separation of the swimming and walding birds, with some improvement on other classes except terretorial birds (which only has a few samples in the test set.)
 
 ##4. Summary
 Models are able to classify birds into the correct ecological classes according to their bone measures. The classification with high accuracy indicates that the bird's living habits are related to its bone structure. It makes sense because a bird's living habits are the results of the natual selection and evolution of the bird's body structures. The different bone structures enable the birds to adapt to the different living habits. Besides performaing classification using the bone measures, details of the bone structures may also help the studies of how birds adapt to the different living habits. 
