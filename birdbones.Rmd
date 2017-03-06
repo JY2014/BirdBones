@@ -1,6 +1,6 @@
 ---
 title: "Bird Bones and Living Habits"
-author: "-JY"
+author: "- JY"
 output: html_document
 ---
 This data analysis project uses a [dataset](https://www.kaggle.com/zhangjuefei/birds-bones-and-living-habits) that contains bone measures and living habits of birds provided by Dr. D. Liu of Beijing Museum of Natural History. The data contains ecological categories of the birds and measures of length and diameter of five bones from the bird's skeleton. The analysis explores the data and builds models to classify the bird's ecological classes based on its bone information. 
