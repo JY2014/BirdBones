@@ -1,6 +1,6 @@
 ---
 title: "Bird Bones and Living Habits"
-author: "- JY"
+author: "-JY"
 output: html_document
 ---
 This data analysis project uses a [dataset](https://www.kaggle.com/zhangjuefei/birds-bones-and-living-habits) that contains bone measures and living habits of birds provided by Dr. D. Liu of Beijing Museum of Natural History. The data contains ecological categories of the birds and measures of length and diameter of five bones from the bird's skeleton. The analysis explores the data and builds models to classify the bird's ecological classes based on its bone information. 
@@ -416,7 +416,7 @@ set.seed(322)
 svm.rbf <- tune(svm, new.type ~ PC1+PC3+PC4, 
                 data = train, kernel = "radial", 
                 ranges = list(gamma = seq(0.01, 0.2, 0.02),
-                              cost = seq(20, 240, 20)))
+                              cost = seq(1, 200, 20)))
 svm.rbf$best.parameters
 plot(svm.rbf, main = "Figure 8. Visualize the Grid Search Result")
 # predict on test set
