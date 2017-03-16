@@ -32,7 +32,10 @@ The bones measured are indicated on the following graph:
 * 3. Classification
     - 3.1. Water vs Non-water birds
     - 3.2. Multi-class classification
-* 4. Summary
+* 4. Explore natural connection of classes/bone measures by clustering
+    - 4.1. Connection of the bone measures
+    - 4.2. k-means clustering on bird living habits
+* 5. Summary
 
 ```{r, message = FALSE}
 library(knitr)
@@ -467,5 +470,87 @@ table.3$table
 
 The RBF kernel improves the classification accuracy to over 95%. The improvement is mainly on better separation of the swimming and walding birds, with some improvement on other classes except terretorial birds (which only has a few samples in the test set.)
 
-##4. Summary
-Models are able to classify birds into the correct ecological classes according to their bone measures. The classification with high accuracy indicates that the bird's living habits are related to its bone structure. It makes sense because a bird's living habits are the results of the natual selection and evolution of the bird's body structures. The different bone structures enable the birds to adapt to the different living habits. Besides performaing classification using the bone measures, details of the bone structures may also help the studies of how birds adapt to the different living habits. 
+##4. Explore natural connection of classes/bone measures by clustering
+After performing classification using supervised learning methods, let's further explore connections between the bone measures and types of living habits using clustering methods. Due to the unsupervised nature of clustering, it may reveal natual connection between the features/classes. 
+
+###4.1. Connection of the bone measures
+First, in order to understand how the bone measures relate, the bone measures are clustered by hierachical clustering method. The distance between bone measures are defined according to Euclidean distance, and feasures close with each other are clustered together. Based on the order clustering is performed, hierachical clustering uses "complete", "single" and "average" linkage methods. The following result uses default complete linkage. Interestingly, these three linkage methods produce exactly the same clustering pattern.
+
+```{r, cache=TRUE, fig.height=5, fig.width=6}
+# apply hierachical clustering on bone measures
+clusters.bones <- hclust(dist(t(data.complete[2:11])))
+# plot the dendrogram
+plot(clusters.bones, 
+     main = "Figure 9. Hierarchical clustering of the bone measures", 
+     xlab = "Bone measures", sub="")
+# draw rectangles around clusters
+rect.hclust(clusters.bones, h = 800, which = c(1, 2, 3),
+            border = c("green", "red", "blue"))
+```
+
+The results are consistent with our previous knowledge of the bone measures. All the width measures are clustered together (**in green box**), and are separate from the length measures. The difference between the width measures are very small. In comparison, the length measures are further separated into two clusters. Interestingly, one of the clusters includes humerus and ulna, both are in bird wings (**in red box**). The three bone in bird legs form another cluster (**in blue box**). It suggests that the bones in wings and legs are evolved separately for different functions and living habits.  
+
+
+###4.2. k-means clustering on bird living habits
+Besides using supervised classification models, we can also apply unsupervised classification methods on the dataset. k-means clustering is tested in this case. 
+
+The number of clusters is chosen by examining percentage of variance explained against the number of clusters using the "elbow method". The optimal number of clusters is chosen at the number where adding clusters does not explain significant amount of additional variance. Since deciding the optimal number of clusters is more or less subjective, the method is "semi-supervised".
+
+```{r, fig.width=6, fig.height=4, cache=TRUE}
+# compute % variance explained for different k values
+var.explained <- c()
+for (k in 1:15){
+  model <- kmeans(data.complete[2:11], centers = k)
+  var.explained <- c(var.explained, 
+                     model$betweenss/(model$tot.withinss + model$betweenss))
+}
+#plot vairance explained against k values
+df <- data.frame(k = 1:15, var.explained = var.explained)
+ggplot(df, aes(x = k, y = var.explained))+
+  geom_point()+
+  geom_line()+
+  xlab("Number of Clusters")+
+  ylab("Percent Variance Explained")+
+  ggtitle("Figure 10. Percent Variance Explained by Different Numbers of Clusters")+
+  theme(plot.title = element_text(hjust = 0.5, size = 12))
+```
+
+The percentage of variance explained keeps increasing until after nine clusters, so k is set to nine. 
+
+k-means clustering with $k=9$ is performed on the data. The living habits classified into each of the cluster is visualized in the following graph. For each cluster, the majority living habit is indicated as the "classified type". 
+
+```{r, cache=TRUE, fig.width=8, fig.height=5}
+# perform k-means clustering with 9 clusters
+num.clust <- 9
+kmeans_4 <- kmeans(data.complete[2:11], centers = num.clust)
+# combine results with actual type
+type.df <- data.frame(actual = data.complete$type,
+                      class = kmeans_4$cluster)
+# split by cluster
+type.split <- split(type.df, type.df$class)
+# classify the cluster according to the majority type
+types <- sapply(type.split, 
+                function(x) {c = table(x$actual); names(c)[c == max(c)]})
+# organize classified type into the data.frame
+num_in_clust <- sapply(type.split, nrow)
+clust.type <- c()
+for (i in 1:num.clust){
+  clust.type <- c(clust.type, rep(types[i], num_in_clust[i]))
+}
+type.df$kmeans.type <- clust.type
+# plot stacked bar chart
+ggplot(type.df, aes(x = class, fill = actual))+
+  geom_bar(stat = "count")+
+  scale_fill_brewer(palette = "Set2", name = c("Actual type"),
+                    label = label) +
+  ggtitle("Figure 11. Actual ecological classes in each cluster") +
+  theme(plot.title = element_text(hjust = 0.5, size = 14))+
+  scale_x_continuous("Classified type", breaks = 1:num.clust, labels = types)
+```
+
+k-means clustering does not perform well on this data. Most of the clusters are not dominated by single living habits. The two big classes, swimming and singing, either are represented by more than two clusters, and highly mixed with other classes. The final classified types by majority in each cluster are mainly singing and swimming. Therefore, k-means clustering is unable to correctly classify bird living habits using the bone measures.  
+
+##5. Summary
+Both logistic regression and support vector machines are able to classify birds into the correct ecological classes according to their bone measures. The high accuracy of the classification indicates that the bird's living habits are related to its bone structure. It makes sense because a bird's living habits are the results of natual selection and evolution of the bird's body structures. The different bone structures enable the birds to adapt to the different living habits. Besides using the models to perform classification using the bone measures, details of the bone structures may also help the studies of how birds adapt to the different living habits. 
+
+Hierachical clustering is able to separate bone width and length measures, and further group bone lengths from bones in wings and legs. It suggests that the bones in wings/legs are typically envolved together. Wings are legs are probably envolved separated for different living habits. In addition, k-means clustering is not suitable for grouping birds with similar living habits. Instead, the supervised classification models are preferred for this task.   
