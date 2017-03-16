@@ -339,3 +339,71 @@ print (paste0("Multi-class classification accuracy of the RBF SVM is ",
 # confusion matrix
 table.3 <- confusionMatrix(pred, test$type)
 table.3$table
+
+
+######----------------------------------- ######
+###               Clustering                 ###
+#####-------------------------------------######
+
+###
+##### Hierachical clustering on bone measures
+###
+
+# apply hierachical clustering on bone measures
+clusters.bones <- hclust(dist(t(data.complete[2:11])))
+# plot the dendrogram
+plot(clusters.bones, 
+     main = "Figure 9. Hierarchical clustering of the bone measures", 
+     xlab = "Bone measures", sub="")
+# draw rectangles around clusters
+rect.hclust(clusters.bones, h = 800, which = c(1, 2, 3),
+            border = c("green", "red", "blue"))
+
+
+###
+##### k-means clustering on living habits
+###
+
+# compute % variance explained for different k values
+var.explained <- c()
+for (k in 1:15){
+  model <- kmeans(data.complete[2:11], centers = k)
+  var.explained <- c(var.explained, 
+                     model$betweenss/(model$tot.withinss + model$betweenss))
+}
+#plot vairance explained against k values
+df <- data.frame(k = 1:15, var.explained = var.explained)
+ggplot(df, aes(x = k, y = var.explained))+
+  geom_point()+
+  geom_line()+
+  xlab("Number of Clusters")+
+  ylab("Percent Variance Explained")+
+  ggtitle("Figure 10. Percent Variance Explained by Different Numbers of Clusters")+
+  theme(plot.title = element_text(hjust = 0.5, size = 12))
+
+# perform k-means clustering with 9 clusters
+num.clust <- 9
+kmeans_4 <- kmeans(data.complete[2:11], centers = num.clust)
+# combine results with actual type
+type.df <- data.frame(actual = data.complete$type,
+                      class = kmeans_4$cluster)
+# split by cluster
+type.split <- split(type.df, type.df$class)
+# classify the cluster according to the majority type
+types <- sapply(type.split, 
+                function(x) {c = table(x$actual); names(c)[c == max(c)]})
+# organize classified type into the data.frame
+num_in_clust <- sapply(type.split, nrow)
+clust.type <- c()
+for (i in 1:num.clust){
+  clust.type <- c(clust.type, rep(types[i], num_in_clust[i]))
+}
+type.df$kmeans.type <- clust.type
+# plot stacked bar chart
+ggplot(type.df, aes(x = class, fill = actual))+
+  geom_bar(stat = "count")+
+  scale_fill_brewer(palette = "Set2", name = c("Actual type"),
+                    label = label) +
+  ggtitle("Figure 11. Actual ecological classes in each cluster") +
+  theme(plot.title = element_text(hjust = 0.5, size = 14))+
+  scale_x_continuous("Classified type", breaks = 1:num.clust, labels = types)
